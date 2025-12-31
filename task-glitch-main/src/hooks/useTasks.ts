@@ -42,17 +42,22 @@ export function useTasks(): UseTasksState {
 
   const fetchedRef = useRef(false);
 
+  // 🔒 RESET delete state on reload (CRITICAL FIX)
+  useEffect(() => {
+    setLastDeleted(null);
+  }, []);
+
   function normalizeTasks(input: any[]): Task[] {
     const now = Date.now();
     return (Array.isArray(input) ? input : []).map((t, idx) => {
       const created = t.createdAt
         ? new Date(t.createdAt)
-        : new Date(now - (idx + 1) * 24 * 3600 * 1000);
+        : new Date(now - (idx + 1) * 86400000);
 
       const completed =
         t.completedAt ||
         (t.status === 'Done'
-          ? new Date(created.getTime() + 24 * 3600 * 1000).toISOString()
+          ? new Date(created.getTime() + 86400000).toISOString()
           : undefined);
 
       return {
@@ -65,52 +70,51 @@ export function useTasks(): UseTasksState {
         notes: t.notes,
         createdAt: created.toISOString(),
         completedAt: completed,
-      } as Task;
+      };
     });
   }
 
-  // BUG 1 already fixed – single fetch
+  // ✅ BUG 1 FIX — fetch only once
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
-    let isMounted = true;
+    let mounted = true;
 
     async function load() {
       try {
         const res = await fetch('/tasks.json');
-        if (!res.ok) throw new Error(`Failed to load tasks.json (${res.status})`);
-        const data = (await res.json()) as any[];
+        const data = res.ok ? await res.json() : [];
         const normalized = normalizeTasks(data);
-        const finalData =
-          normalized.length > 0 ? normalized : generateSalesTasks(50);
-        if (isMounted) setTasks(finalData);
+        if (mounted) {
+          setTasks(normalized.length ? normalized : generateSalesTasks(30));
+        }
       } catch (e: any) {
-        if (isMounted) setError(e?.message ?? 'Failed to load tasks');
+        if (mounted) setError(e?.message ?? 'Failed to load tasks');
       } finally {
-        if (isMounted) setLoading(false);
+        if (mounted) setLoading(false);
       }
     }
 
     load();
     return () => {
-      isMounted = false;
+      mounted = false;
     };
   }, []);
 
-  const derivedSorted = useMemo<DerivedTask[]>(() => {
-    const withRoi = tasks.map(withDerived);
-    return sortDerived(withRoi);
+  const derivedSorted = useMemo(() => {
+    return sortDerived(tasks.map(withDerived));
   }, [tasks]);
 
-  const metrics = useMemo<Metrics>(() => {
-    if (tasks.length === 0) return INITIAL_METRICS;
+  const metrics = useMemo((): Metrics => {
+    if (!tasks.length) return INITIAL_METRICS;
     const totalRevenue = computeTotalRevenue(tasks);
     const totalTimeTaken = tasks.reduce((s, t) => s + t.timeTaken, 0);
     const timeEfficiencyPct = computeTimeEfficiency(tasks);
     const revenuePerHour = computeRevenuePerHour(tasks);
     const averageROI = computeAverageROI(tasks);
     const performanceGrade = computePerformanceGrade(averageROI);
+
     return {
       totalRevenue,
       totalTimeTaken,
@@ -164,7 +168,6 @@ export function useTasks(): UseTasksState {
     setLastDeleted(null);
   }, [lastDeleted]);
 
-  // BUG 2 FIX
   const clearLastDeleted = useCallback(() => {
     setLastDeleted(null);
   }, []);
