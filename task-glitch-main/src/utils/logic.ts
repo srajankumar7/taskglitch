@@ -1,8 +1,16 @@
 import { DerivedTask, Task } from '@/types';
 
 export function computeROI(revenue: number, timeTaken: number): number | null {
-  // BUG 5 intentionally left (division by zero handled later)
-  return revenue / (timeTaken as number);
+  const rev = Number(revenue);
+  const time = Number(timeTaken);
+
+  if (!Number.isFinite(rev) || !Number.isFinite(time)) return null;
+  if (time <= 0) return null;
+
+  const roi = rev / time;
+  if (!Number.isFinite(roi)) return null;
+
+  return Number(roi.toFixed(2));
 }
 
 export function computePriorityWeight(priority: Task['priority']): 3 | 2 | 1 {
@@ -25,22 +33,17 @@ export function withDerived(task: Task): DerivedTask {
 }
 
 /* ------------------------------------------------
-   BUG 3 FIX: Stable, deterministic sorting
+   Stable, deterministic sorting (BUG 3)
 ------------------------------------------------- */
 export function sortTasks(tasks: ReadonlyArray<DerivedTask>): DerivedTask[] {
   return [...tasks].sort((a, b) => {
     const aROI = a.roi ?? -Infinity;
     const bROI = b.roi ?? -Infinity;
 
-    // 1. ROI (descending)
     if (bROI !== aROI) return bROI - aROI;
-
-    // 2. Priority (High > Medium > Low)
     if (b.priorityWeight !== a.priorityWeight) {
       return b.priorityWeight - a.priorityWeight;
     }
-
-    // 3. Stable tie-breaker (alphabetical title)
     return a.title.localeCompare(b.title);
   });
 }
@@ -79,7 +82,8 @@ export function computePerformanceGrade(avgROI: number): 'Excellent' | 'Good' | 
   return 'Needs Improvement';
 }
 
-// ---- Advanced analytics (unchanged) ----
+/* ---- Advanced analytics (unchanged) ---- */
+
 export type FunnelCounts = {
   todo: number;
   inProgress: number;
